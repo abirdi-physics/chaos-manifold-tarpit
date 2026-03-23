@@ -14,4 +14,3 @@ Instead of using standard cryptographic hashing, this system uses a Lorenz syste
 - Implement fixed point arithmetic for determinism
 - Add tarpit for login attempts
 - Use Matplotlib to visualise manifold divergence
-- 
