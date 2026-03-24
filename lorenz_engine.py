@@ -1,14 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-Created on Mon Mar 23 15:47:10 2026
 
-@author: alexandre
-"""
 import numpy as np
 import torch
 import torch.nn as nn
 from torch import optim
+from sklearn.preprocessing import StandardScaler
 
 class Lorenz():
     def __init__(self, x, y, z, steps):
@@ -71,7 +68,7 @@ class Lorenz():
         X = X.reshape(X.shape[0], -1)
         y = np.array(y)
         
-        return torch.tensor(X, dtype = torch.float32), torch.tensor(y, dtype = torch.float32)
+        return X, y
 
 class ChaosPredictor(nn.Module):
     def __init__(self):
@@ -86,22 +83,49 @@ class ChaosPredictor(nn.Module):
     def forward(self, x):
         return self.model(x)
     
-attractor = Lorenz(1, 1, 1, 200)
+def generate_hallucination(model, X_scaler, y_scaler, seed_sequence, steps):
+    model.eval()
+    hallucinated_path = []
+    
+    current_window = X_scaler.transform(seed_sequence.reshape(1,-1))
+    
+    with torch.no_grad():
+        for i in range(steps):
+            X_tensor = torch.tensor(current_window, dtype = torch.float32)
+            
+            prediction = model(X_tensor)
+            prediction_np = prediction.detach().cpu().numpy()
+            
+            real_world_points = y_scaler.inverse_transform(prediction_np)
+        
+            hallucinated_path.append(real_world_points.flatten())
+        
+            new_window = np.concatenate([current_window[0, 3:], 
+                                         prediction_np.flatten()])
+            current_window = new_window.reshape(1, -1)
+    
+    return np.array(hallucinated_path)
+    
+attractor = Lorenz(1, 1, 1, 2000)
 attractor.path()
 
-X_train, y_train = attractor.prepare_training_data()
+X_raw, y_raw = attractor.prepare_training_data()
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(f"Training on: {device}")
+X_scaler = StandardScaler()
+y_scaler = StandardScaler()
+
+X_scaled = X_scaler.fit_transform(X_raw)
+y_scaled = y_scaler.fit_transform(y_raw)
+
+X_train = torch.tensor(X_scaled, dtype=torch.float32)
+y_train = torch.tensor(y_scaled, dtype=torch.float32)
 
 model = ChaosPredictor()
 loss = nn.MSELoss()
 optimizer = optim.Adam(model.parameters(), lr = 0.001)
 
-X_train = X_train.to(device)
-y_train = y_train.to(device)
 
-num_epochs = 500
+num_epochs = 2000
 for epoch in range(num_epochs):
     optimizer.zero_grad()
     outputs = model(X_train)
@@ -112,15 +136,14 @@ for epoch in range(num_epochs):
     
     if (epoch + 1) % 50 == 0:
         print(f'Epoch [{epoch + 1}/{num_epochs}], MSE Loss: {mse.item()}')
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
