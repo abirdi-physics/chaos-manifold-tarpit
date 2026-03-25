@@ -6,8 +6,10 @@ import torch
 import torch.nn as nn
 from torch import optim
 from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import r2_score
 
-class Lorenz():
+class Lorenz(): #Physics of Lorenz attractor
     def __init__(self, x, y, z, steps):
         self.sigma = 10
         self.rho = 28
@@ -22,7 +24,7 @@ class Lorenz():
         self.trajectory = []
         self.manifold = []
     
-    def path(self):
+    def path(self): #Creates trajectory for initial condition
         
         for i in range(self.steps):
             
@@ -41,13 +43,13 @@ class Lorenz():
                 
         return self.trajectory
             
-    def distance(self, point1, point2):
+    def distance(self, point1, point2): #Finds distance between points
         
         return np.sqrt((point1[0] - point2[0])**2
                        + (point1[1] - point2[1]) ** 2
-                       + (point1[2] - point2[2]) ** 2)
+                       + (point1[2] - point2[2]) ** 2) 
     
-    def verify_match(self, manifold):
+    def verify_match(self, manifold): #verifies if point belongs to trajectory
         
         for p1, p2 in zip(self.manifold, manifold):
             
@@ -56,12 +58,12 @@ class Lorenz():
             
         return True
     
-    def prepare_training_data(self, window_size = 3):
-        X = []
+    def prepare_training_data(self, window_size = 3): #Prepares data from self.trajectory
+        X = []  
         y = []
 
         for i in range(len(self.trajectory) - window_size):
-
+#Creates window and flattens arrays for pytorch
             X.append(self.trajectory[i:i + window_size])
             y.append(self.trajectory[i + window_size])
         X = np.array(X)
@@ -70,7 +72,7 @@ class Lorenz():
         
         return X, y
 
-class ChaosPredictor(nn.Module):
+class ChaosPredictor(nn.Module): #Neural Network
     def __init__(self):
         super().__init__()
         self.model = nn.Sequential(
@@ -82,7 +84,7 @@ class ChaosPredictor(nn.Module):
         
     def forward(self, x):
         return self.model(x)
-    
+#neural network tries to predict a trajectory
 def generate_hallucination(model, X_scaler, y_scaler, seed_sequence, steps):
     model.eval()
     hallucinated_path = []
@@ -105,6 +107,18 @@ def generate_hallucination(model, X_scaler, y_scaler, seed_sequence, steps):
             current_window = new_window.reshape(1, -1)
     
     return np.array(hallucinated_path)
+#gives R^2 of regression
+def regression_score(model, X_test, y_test, y_scaler):
+    model.eval()      
+    with torch.no_grad():
+        X_test = torch.tensor(X_test, dtype = torch.float)
+        predictions = model(X_test)
+        predictions_np = predictions.detach().cpu().numpy()
+        descaled_predictions = y_scaler.inverse_transform(predictions_np)
+        descaled_y = y_scaler.inverse_transform(y_test)
+        
+        return r2_score(descaled_y, descaled_predictions)
+            
     
 attractor = Lorenz(1, 1, 1, 2000)
 attractor.path()
@@ -117,8 +131,12 @@ y_scaler = StandardScaler()
 X_scaled = X_scaler.fit_transform(X_raw)
 y_scaled = y_scaler.fit_transform(y_raw)
 
-X_train = torch.tensor(X_scaled, dtype=torch.float32)
-y_train = torch.tensor(y_scaled, dtype=torch.float32)
+X_train, X_test, y_train, y_test = train_test_split(X_scaled, y_scaled
+                                                    , test_size = 0.2
+                                                    , shuffle=False)
+
+X_train = torch.tensor(X_train, dtype=torch.float32)
+y_train = torch.tensor(y_train, dtype=torch.float32)
 
 model = ChaosPredictor()
 loss = nn.MSELoss()
@@ -137,6 +155,7 @@ for epoch in range(num_epochs):
     if (epoch + 1) % 50 == 0:
         print(f'Epoch [{epoch + 1}/{num_epochs}], MSE Loss: {mse.item()}')
 
+print(regression_score(model, X_test, y_test, y_scaler))
     
 
     
